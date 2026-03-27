@@ -1,0 +1,98 @@
+;
+; ch341arm64.inf - INF file for CH340/CH341 ARM64 USB-Serial driver
+;
+; Targets: USB\VID_1A86&PID_7523
+; Class:   Ports (COM port)
+;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = Ports
+ClassGuid   = {4D36E978-E325-11CE-BFC1-08002BE10318}
+Provider    = %ProviderName%
+CatalogFile = ch341arm64.cat
+DriverVer   = 03/27/2026,1.0.0.0
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+ch341arm64.sys = 1
+
+; ----------------------------------------------------------------
+; Manufacturer / Models
+; ----------------------------------------------------------------
+
+[Manufacturer]
+%MfgName% = DeviceList,NTARM64
+
+[DeviceList.NTARM64]
+%DeviceName%     = CH341_Install, USB\VID_1A86&PID_7523
+%DeviceNameA%    = CH341_Install, USB\VID_1A86&PID_7522
+%DeviceNameAlt%  = CH341_Install, USB\VID_1A86&PID_5523
+
+; ----------------------------------------------------------------
+; Install section
+; ----------------------------------------------------------------
+
+[CH341_Install.NT]
+CopyFiles = CH341_CopyFiles
+AddReg    = CH341_AddReg
+
+[CH341_CopyFiles]
+ch341arm64.sys
+
+[CH341_AddReg]
+HKR,,EnumPropPages32,,"MsPorts.dll,SerialPortPropPageProvider"
+
+; ----------------------------------------------------------------
+; Service
+; ----------------------------------------------------------------
+
+[CH341_Install.NT.Services]
+AddService = ch341arm64, 0x00000002, CH341_Service_Inst
+
+[CH341_Service_Inst]
+DisplayName   = %ServiceName%
+ServiceType   = 1               ; SERVICE_KERNEL_DRIVER
+StartType     = 3               ; SERVICE_DEMAND_START
+ErrorControl  = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary = %13%\ch341arm64.sys
+
+; ----------------------------------------------------------------
+; WDF / KMDF co-installer
+; ----------------------------------------------------------------
+
+[CH341_Install.NT.Wdf]
+KmdfService = ch341arm64, CH341_WdfSection
+
+[CH341_WdfSection]
+KmdfLibraryVersion = 1.25
+
+; ----------------------------------------------------------------
+; Hardware settings
+; ----------------------------------------------------------------
+
+[CH341_Install.NT.HW]
+AddReg = CH341_HW_AddReg
+
+[CH341_HW_AddReg]
+; Mark as RS-232 serial port subclass
+HKR,, "PortSubClass", 0x00010001, 0x01
+
+; ----------------------------------------------------------------
+; Strings
+; ----------------------------------------------------------------
+
+[Strings]
+ProviderName  = "ch341arm64"
+MfgName       = "WCH"
+DeviceName    = "CH340 USB-Serial (ARM64)"
+DeviceNameA   = "CH341A USB-Serial (ARM64)"
+DeviceNameAlt = "CH341 USB-Serial (ARM64)"
+ServiceName   = "CH341 ARM64 Serial Port Driver"
+DiskName      = "CH341 ARM64 Driver Installation Disk"

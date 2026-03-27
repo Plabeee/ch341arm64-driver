@@ -1,0 +1,52 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 20,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "arm64-debug",
+            "displayName": "ARM64 Debug",
+            "description": "KMDF driver for ARM64 Windows 11 (Debug)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_SYSTEM_PROCESSOR": "ARM64"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": ["Windows"]
+                }
+            }
+        },
+        {
+            "name": "arm64-release",
+            "displayName": "ARM64 Release",
+            "description": "KMDF driver for ARM64 Windows 11 (Release)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_SYSTEM_PROCESSOR": "ARM64"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "hostOS": ["Windows"]
+                }
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "arm64-debug",
+            "configurePreset": "arm64-debug"
+        },
+        {
+            "name": "arm64-release",
+            "configurePreset": "arm64-release"
+        }
+    ]
+}
