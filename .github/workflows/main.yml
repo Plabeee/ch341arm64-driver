@@ -35,32 +35,31 @@ jobs:
     - name: Generate Catalog and Test-Sign
       shell: pwsh
       run: |
-        # Get the absolute path to the build folder
         $BuildPath = (Get-Item "build/${{ matrix.preset }}").FullName
         
-        # 1. Create a self-signed test certificate
-        Write-Host "Creating Test Certificate..."
-        $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=CH341TestCert" -KeyUsage DigitalSignature -FriendlyName "CH341 Test Cert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+        # Ensure the INF file is in the build folder so Inf2Cat can find it
+        Copy-Item -Path "inf/ch341arm64.inf" -Destination "$BuildPath\"
         
+        # Create Test Certificate
+        $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=CH341TestCert" -KeyUsage DigitalSignature -FriendlyName "CH341 Test Cert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
         Export-Certificate -Cert $cert -FilePath "$BuildPath\CH341Test.cer"
         
-        # 2. Locate WDK Tools (Added Sort-Object to guarantee we get the latest Windows 11 toolchain)
         $Inf2Cat = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\inf2cat.exe" | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
         $SignTool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
         
-        # 3. Create .cat Catalog File (Wrapped in cmd.exe to prevent PowerShell parameter parsing bugs)
+        # Generate Catalog - explicitly check for success
         Write-Host "Generating Catalog..."
-        cmd.exe /c "`"$Inf2Cat`" /driver:`"$BuildPath`" /os:10_ARM64 /uselocaltime"
+        $proc = Start-Process -FilePath $Inf2Cat -ArgumentList "/driver:`"$BuildPath`" /os:10_ARM64 /uselocaltime" -Wait -PassThru
+        if ($proc.ExitCode -ne 0) { throw "Inf2Cat failed with exit code $($proc.ExitCode)" }
         
-        # 4. Sign the .sys and .cat files
+        # Verify .cat exists before signing
+        $CatFile = Get-ChildItem "$BuildPath\*.cat" | Select-Object -First 1
+        if (-not $CatFile) { throw "Catalog file was not generated! Check your INF file for missing files." }
+        
+        # Sign the files
         Write-Host "Signing Driver..."
         & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.sys"
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.cat"
-        
-        # 4. Sign the .sys and .cat files
-        Write-Host "Signing Driver..."
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.sys"
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.cat"
+        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$($CatFile.FullName)"
 
     - name: Upload Driver Artifacts
       uses: actions/upload-artifact@v4
