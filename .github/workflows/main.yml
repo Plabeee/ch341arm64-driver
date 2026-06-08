@@ -22,18 +22,41 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup MSVC ARM64 Environment
-      # This action sets up the Visual Studio Developer Command Prompt.
-      # arch: amd64_arm64 tells it to use the 64-bit host to compile for ARM64 target.
       uses: ilammy/msvc-dev-cmd@v1
       with:
         arch: amd64_arm64
 
     - name: Configure CMake
-      # Now CMake will correctly find cl.exe instead of MinGW's cc.exe and force FindWDK.cmake to use ARM64 libraries to override CMake's host architecture detection
       run: cmake --preset ${{ matrix.preset }} -DWDK_TARGET_ARCH=ARM64
 
     - name: Build Driver
       run: cmake --build build/${{ matrix.preset }}
+
+    - name: Generate Catalog and Test-Sign
+      shell: pwsh
+      run: |
+        # Get the absolute path to the build folder
+        $BuildPath = (Get-Item "build/${{ matrix.preset }}").FullName
+        
+        # 1. Create a self-signed test certificate
+        Write-Host "Creating Test Certificate..."
+        $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=CH341TestCert" -KeyUsage DigitalSignature -FriendlyName "CH341 Test Cert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+        
+        # Export the .cer file so you can install it on your VM
+        Export-Certificate -Cert $cert -FilePath "$BuildPath\CH341Test.cer"
+        
+        # 2. Locate WDK Tools on the GitHub runner
+        $Inf2Cat = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\inf2cat.exe" | Select-Object -Last 1 -ExpandProperty FullName
+        $SignTool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1 -ExpandProperty FullName
+        
+        # 3. Create .cat Catalog File (10_ARM64 targets Windows 10/11 ARM64)
+        Write-Host "Generating Catalog..."
+        & $Inf2Cat /driver:$BuildPath /os:10_ARM64 /uselocaltime
+        
+        # 4. Sign the .sys and .cat files
+        Write-Host "Signing Driver..."
+        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.sys"
+        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.cat"
 
     - name: Upload Driver Artifacts
       uses: actions/upload-artifact@v4
@@ -44,4 +67,5 @@ jobs:
           build/${{ matrix.preset }}/**/*.inf
           build/${{ matrix.preset }}/**/*.pdb
           build/${{ matrix.preset }}/**/*.cer
+          build/${{ matrix.preset }}/**/*.cat
         if-no-files-found: error
