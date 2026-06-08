@@ -29,8 +29,8 @@ jobs:
         arch: amd64_arm64
 
     - name: Configure CMake
-      # Now CMake will correctly find cl.exe instead of MinGW's cc.exe
-      run: cmake --preset ${{ matrix.preset }}
+      # Now CMake will correctly find cl.exe instead of MinGW's cc.exe and force FindWDK.cmake to use ARM64 libraries to override CMake's host architecture detection
+      run: cmake --preset ${{ matrix.preset }} -DWDK_TARGET_ARCH=ARM64
 
     - name: Build Driver
       run: cmake --build build/${{ matrix.preset }}
