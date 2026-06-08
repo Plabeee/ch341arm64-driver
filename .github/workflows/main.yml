@@ -21,9 +21,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Setup MSVC ARM64 Environment
+      # This action sets up the Visual Studio Developer Command Prompt.
+      # arch: amd64_arm64 tells it to use the 64-bit host to compile for ARM64 target.
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64_arm64
+
     - name: Configure CMake
-      # The WDK is natively installed on the windows-2022 runner.
-      # FindWDK.cmake will automatically detect it.
+      # Now CMake will correctly find cl.exe instead of MinGW's cc.exe
       run: cmake --preset ${{ matrix.preset }}
 
     - name: Build Driver
