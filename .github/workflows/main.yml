@@ -5,36 +5,25 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Allows manual trigger from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build ${{ matrix.preset }}
-    # Visual Studio 2022 is required. We specify windows-2022 explicitly 
-    # as it includes the necessary MSVC ARM64 C++ tools by default.
     runs-on: windows-2022
 
     strategy:
       fail-fast: false
       matrix:
-        # Based on CMakePresets.json and README.md
         preset: ["arm64-debug", "arm64-release"]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Install WDK (Windows Driver Kit)
-      # The WDK is required to compile KMDF drivers but is not pre-installed on GitHub runners.
-      # This community action automatically resolves and configures the latest WDK headers and libraries.
-      uses: nefarius/setup-wdk@v1
-      with:
-        # The README specifies WDK 10.0.26100.0 or later is required. 
-        # Leaving this without a strict version lets it default to the latest available WDK matching VS2022.
-        update-path: true
-
     - name: Configure CMake
-      # Ninja and CMake 3.20+ are pre-installed on the Windows runner.
+      # The WDK is natively installed on the windows-2022 runner.
+      # FindWDK.cmake will automatically detect it.
       run: cmake --preset ${{ matrix.preset }}
 
     - name: Build Driver
