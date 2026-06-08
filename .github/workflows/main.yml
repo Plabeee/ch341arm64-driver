@@ -1,0 +1,52 @@
+name: Build Driver
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows manual trigger from the Actions tab
+
+jobs:
+  build:
+    name: Build ${{ matrix.preset }}
+    # Visual Studio 2022 is required. We specify windows-2022 explicitly 
+    # as it includes the necessary MSVC ARM64 C++ tools by default.
+    runs-on: windows-2022
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Based on CMakePresets.json and README.md
+        preset: ["arm64-debug", "arm64-release"]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install WDK (Windows Driver Kit)
+      # The WDK is required to compile KMDF drivers but is not pre-installed on GitHub runners.
+      # This community action automatically resolves and configures the latest WDK headers and libraries.
+      uses: nefarius/setup-wdk@v1
+      with:
+        # The README specifies WDK 10.0.26100.0 or later is required. 
+        # Leaving this without a strict version lets it default to the latest available WDK matching VS2022.
+        update-path: true
+
+    - name: Configure CMake
+      # Ninja and CMake 3.20+ are pre-installed on the Windows runner.
+      run: cmake --preset ${{ matrix.preset }}
+
+    - name: Build Driver
+      run: cmake --build build/${{ matrix.preset }}
+
+    - name: Upload Driver Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ch341arm64-${{ matrix.preset }}
+        path: |
+          build/${{ matrix.preset }}/**/*.sys
+          build/${{ matrix.preset }}/**/*.inf
+          build/${{ matrix.preset }}/**/*.pdb
+          build/${{ matrix.preset }}/**/*.cer
+        if-no-files-found: error
