@@ -36,30 +36,24 @@ jobs:
       shell: pwsh
       run: |
         $BuildPath = (Get-Item "build/${{ matrix.preset }}").FullName
-        
-        # Ensure the INF file is in the build folder so Inf2Cat can find it
         Copy-Item -Path "inf/ch341arm64.inf" -Destination "$BuildPath\"
         
-        # Create Test Certificate
         $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=CH341TestCert" -KeyUsage DigitalSignature -FriendlyName "CH341 Test Cert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
         Export-Certificate -Cert $cert -FilePath "$BuildPath\CH341Test.cer"
         
         $Inf2Cat = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\inf2cat.exe" | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
-        $SignTool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
         
-        # Generate Catalog - explicitly check for success
-        Write-Host "Generating Catalog..."
-        $proc = Start-Process -FilePath $Inf2Cat -ArgumentList "/driver:`"$BuildPath`" /os:10_ARM64 /uselocaltime" -Wait -PassThru
-        if ($proc.ExitCode -ne 0) { throw "Inf2Cat failed with exit code $($proc.ExitCode)" }
+        # Verbose execution to see the exact error
+        Write-Host "Running Inf2Cat..."
+        $proc = Start-Process -FilePath $Inf2Cat -ArgumentList "/driver:`"$BuildPath`" /os:10_ARM64 /verbose" -Wait -PassThru -RedirectStandardOutput "$BuildPath\inf2cat.log" -RedirectStandardError "$BuildPath\inf2cat.err"
         
-        # Verify .cat exists before signing
-        $CatFile = Get-ChildItem "$BuildPath\*.cat" | Select-Object -First 1
-        if (-not $CatFile) { throw "Catalog file was not generated! Check your INF file for missing files." }
-        
-        # Sign the files
-        Write-Host "Signing Driver..."
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.sys"
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$($CatFile.FullName)"
+        # Display the error log if it failed
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "Inf2Cat failed! Log output:"
+            Get-Content "$BuildPath\inf2cat.log" | Out-Host
+            Get-Content "$BuildPath\inf2cat.err" | Out-Host
+            throw "Inf2Cat failed with exit code $($proc.ExitCode)"
+        }
 
     - name: Upload Driver Artifacts
       uses: actions/upload-artifact@v4
