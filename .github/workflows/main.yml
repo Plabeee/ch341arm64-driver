@@ -36,44 +36,35 @@ jobs:
       shell: pwsh
       run: |
         $BuildPath = (Get-Item "build/${{ matrix.preset }}").FullName
+        
+        # Ensure the INF file is in the build folder so Inf2Cat can find it
         Copy-Item -Path "inf/ch341arm64.inf" -Destination "$BuildPath\"
         
-        # 1. Create Test Certificate
+        # Create Test Certificate
         $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=CH341TestCert" -KeyUsage DigitalSignature -FriendlyName "CH341 Test Cert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
         Export-Certificate -Cert $cert -FilePath "$BuildPath\CH341Test.cer"
         
-        # 2. DEBUG: List all available Inf2Cat versions
-        Write-Host "--- Searching for Inf2Cat ---"
-        $AllInf2Cats = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x86\inf2cat.exe" -Recurse
-        foreach ($bin in $AllInf2Cats) {
-            Write-Host "Found: $($bin.FullName)"
-        }
+        # Explicitly find the LATEST Windows 10/11 Kit installed on the runner
+        $KitVersion = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\10.0.*" | Sort-Object Name -Descending | Select-Object -First 1).Name
+        $Inf2Cat = "C:\Program Files (x86)\Windows Kits\10\bin\$KitVersion\x86\inf2cat.exe"
+        $SignTool = "C:\Program Files (x86)\Windows Kits\10\bin\$KitVersion\x64\signtool.exe"
         
-        # Use the most recent version found
-        $Inf2Cat = ($AllInf2Cats | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-        Write-Host "--- Using Inf2Cat: $Inf2Cat ---"
+        Write-Host "Using Inf2Cat: $Inf2Cat"
+        Write-Host "Using SignTool: $SignTool"
         
-        # 3. DEBUG: Check supported OS list (if possible)
-        # Note: Inf2Cat doesn't have a clear '--help' for OS, but we can try to run it with a dummy OS to see the error list
+        # Generate Catalog - wrap in cmd.exe to prevent powershell parsing errors with the /os argument
+        Write-Host "Generating Catalog..."
+        cmd.exe /c "`"$Inf2Cat`" /driver:`"$BuildPath`" /os:10_ARM64 /uselocaltime"
+        if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed with exit code $LASTEXITCODE" }
         
-        # 4. Generate Catalog
-        $proc = Start-Process -FilePath $Inf2Cat -ArgumentList "/driver:`"$BuildPath`" /os:10_ARM64 /verbose" -Wait -PassThru -RedirectStandardOutput "$BuildPath\inf2cat.log" -RedirectStandardError "$BuildPath\inf2cat.err"
-        
-        if ($proc.ExitCode -ne 0) {
-            Write-Host "Inf2Cat failed!"
-            Write-Host "--- StdOut ---"
-            Get-Content "$BuildPath\inf2cat.log" | Out-Host
-            Write-Host "--- StdErr ---"
-            Get-Content "$BuildPath\inf2cat.err" | Out-Host
-            throw "Inf2Cat failed with exit code $($proc.ExitCode)"
-        }
-        
+        # Verify .cat exists before signing
         $CatFile = Get-ChildItem "$BuildPath\*.cat" | Select-Object -First 1
+        if (-not $CatFile) { throw "Catalog file was not generated! Check your INF file for missing files." }
         
-        # 5. Sign
-        $SignTool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object LastWriteTime | Select-Object -Last 1 -ExpandProperty FullName
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$BuildPath\ch341arm64.sys"
-        & $SignTool sign /v /s My /n "CH341TestCert" /fd SHA256 /t http://timestamp.digicert.com "$($CatFile.FullName)"
+        # Sign the files - wrap in cmd.exe for safety
+        Write-Host "Signing Driver..."
+        cmd.exe /c "`"$SignTool`" sign /v /s My /n `"CH341TestCert`" /fd SHA256 /t http://timestamp.digicert.com `"$BuildPath\ch341arm64.sys`""
+        cmd.exe /c "`"$SignTool`" sign /v /s My /n `"CH341TestCert`" /fd SHA256 /t http://timestamp.digicert.com `"$($CatFile.FullName)`""
 
     - name: Upload Driver Artifacts
       uses: actions/upload-artifact@v4
